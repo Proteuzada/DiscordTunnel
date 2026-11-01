@@ -1,0 +1,10 @@
+/dist/
+/target/
+/installer/Output/
+/installer/deps/*.msi
+/third_party/openvpn-split/target/
+*.exe
+*.dll
+*.sys
+third_party/bitmask-vpn/
+gh-auth-*.txt

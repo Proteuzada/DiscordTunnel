@@ -1,0 +1,27 @@
+{
+  "RT_MANIFEST": {
+    "#1": {
+      "0409": {
+        "identity": {
+          "name": "DiscordTunnel",
+          "version": "1.0.0.0"
+        },
+        "description": "DiscordTunnel — Discord via RiseupVPN sem túnel no sistema",
+        "minimum-os": "win10",
+        "execution-level": "require administrator"
+      }
+    }
+  },
+  "RT_VERSION": {
+    "#1": {
+      "0409": {
+        "file-version": "1.0.0.0",
+        "product-version": "1.0.0.0",
+        "product-name": "DiscordTunnel",
+        "original-filename": "DiscordTunnel.exe",
+        "company-name": "DiscordTunnel",
+        "file-description": "DiscordTunnel"
+      }
+    }
+  }
+}

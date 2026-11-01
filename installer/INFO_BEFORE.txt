@@ -1,0 +1,8 @@
+DiscordTunnel envia somente o Discord pela RiseupVPN.
+
+O restante do computador continua na sua conexão normal.
+
+A RiseupVPN é mantida por doação. Se você usar com frequência, considere apoiar:
+https://riseup.net/vpn/donate
+
+Ao continuar, você aceita usar a rede Riseup de forma responsável.

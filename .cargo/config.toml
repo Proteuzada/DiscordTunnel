@@ -1,0 +1,2 @@
+[env]
+WINDIVERT_PATH = { value = "third_party/openvpn-split/vendor/windivert", relative = true }

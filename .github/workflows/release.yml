@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: MinGW
+        run: choco install mingw -y
+
+      - name: Build app
+        shell: pwsh
+        run: |
+          $env:Path = "C:\ProgramData\chocolatey\bin;" + $env:Path
+          $env:CGO_ENABLED = "1"
+          $env:CC = "gcc"
+          go install github.com/tc-hib/go-winres@latest
+          .\build.ps1
+
+      - name: Inno Setup
+        run: choco install innosetup -y
+
+      - name: Build installer
+        shell: pwsh
+        run: .\installer\build-installer.ps1 -SkipAppBuild
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiscordTunnel-Setup
+          path: installer/Output/*.exe
