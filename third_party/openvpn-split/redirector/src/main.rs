@@ -1,4 +1,5 @@
 mod adapter;
+mod ipv6block;
 mod divert;
 mod flows;
 mod observer;
@@ -67,6 +68,14 @@ fn run_observe() -> Result<()> {
             let flows = flows.clone();
             tokio::task::spawn_blocking(move || observer::run(resolver, policy_state, flows))
         };
+        let ipv6_handle = {
+            let policy_state = policy_state.clone();
+            let resolver = resolver.clone();
+            let tunneled_paths = tunneled_paths.clone();
+            tokio::task::spawn_blocking(move || {
+                ipv6block::run(policy_state, resolver, tunneled_paths)
+            })
+        };
         let divert_handle = {
             let policy_state = policy_state.clone();
             let flows = flows.clone();
@@ -86,6 +95,7 @@ fn run_observe() -> Result<()> {
             r = watcher_task => r??,
             r = observer_handle => r??,
             r = divert_handle => r??,
+            r = ipv6_handle => r??,
         }
         Ok(())
     })

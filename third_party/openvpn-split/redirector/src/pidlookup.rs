@@ -2,10 +2,11 @@ use std::net::Ipv4Addr;
 
 use windows::Win32::Foundation::NO_ERROR;
 use windows::Win32::NetworkManagement::IpHelper::{
-    GetExtendedTcpTable, GetExtendedUdpTable, MIB_TCPROW_OWNER_PID, MIB_TCPTABLE_OWNER_PID,
+    GetExtendedTcpTable, GetExtendedUdpTable, MIB_TCP6ROW_OWNER_PID, MIB_TCP6TABLE_OWNER_PID,
+    MIB_TCPROW_OWNER_PID, MIB_TCPTABLE_OWNER_PID, MIB_UDP6ROW_OWNER_PID, MIB_UDP6TABLE_OWNER_PID,
     MIB_UDPROW_OWNER_PID, MIB_UDPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_ALL, UDP_TABLE_OWNER_PID,
 };
-use windows::Win32::Networking::WinSock::AF_INET;
+use windows::Win32::Networking::WinSock::{AF_INET, AF_INET6};
 
 /// Synchronous fallback when the observer-populated flow table hasn't caught
 /// up with a fresh socket yet. Hits the Windows IP helper to find the PID
@@ -118,6 +119,88 @@ fn pid_for_udp_v4(local_addr: Ipv4Addr, local_port: u16) -> Option<u32> {
             continue;
         }
         return Some(row.dwOwningPid);
+    }
+    None
+}
+
+pub fn pid_for_local_v6(local_port: u16, proto: u8) -> Option<u32> {
+    match proto {
+        6 => pid_for_tcp_v6(local_port),
+        17 => pid_for_udp_v6(local_port),
+        _ => None,
+    }
+}
+
+fn pid_for_tcp_v6(local_port: u16) -> Option<u32> {
+    let mut size: u32 = 0;
+    unsafe {
+        let _ = GetExtendedTcpTable(None, &mut size, false, AF_INET6.0 as u32, TCP_TABLE_OWNER_PID_ALL, 0);
+    }
+    if size == 0 {
+        return None;
+    }
+    let mut buf = vec![0u8; size as usize];
+    let rc = unsafe {
+        GetExtendedTcpTable(
+            Some(buf.as_mut_ptr() as *mut _),
+            &mut size,
+            false,
+            AF_INET6.0 as u32,
+            TCP_TABLE_OWNER_PID_ALL,
+            0,
+        )
+    };
+    if rc != NO_ERROR.0 {
+        return None;
+    }
+    let table = unsafe { &*(buf.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID) };
+    let count = table.dwNumEntries as usize;
+    if count == 0 {
+        return None;
+    }
+    let rows: &[MIB_TCP6ROW_OWNER_PID] =
+        unsafe { std::slice::from_raw_parts(table.table.as_ptr(), count) };
+    for row in rows {
+        if port_from_dword(row.dwLocalPort) == local_port {
+            return Some(row.dwOwningPid);
+        }
+    }
+    None
+}
+
+fn pid_for_udp_v6(local_port: u16) -> Option<u32> {
+    let mut size: u32 = 0;
+    unsafe {
+        let _ = GetExtendedUdpTable(None, &mut size, false, AF_INET6.0 as u32, UDP_TABLE_OWNER_PID, 0);
+    }
+    if size == 0 {
+        return None;
+    }
+    let mut buf = vec![0u8; size as usize];
+    let rc = unsafe {
+        GetExtendedUdpTable(
+            Some(buf.as_mut_ptr() as *mut _),
+            &mut size,
+            false,
+            AF_INET6.0 as u32,
+            UDP_TABLE_OWNER_PID,
+            0,
+        )
+    };
+    if rc != NO_ERROR.0 {
+        return None;
+    }
+    let table = unsafe { &*(buf.as_ptr() as *const MIB_UDP6TABLE_OWNER_PID) };
+    let count = table.dwNumEntries as usize;
+    if count == 0 {
+        return None;
+    }
+    let rows: &[MIB_UDP6ROW_OWNER_PID] =
+        unsafe { std::slice::from_raw_parts(table.table.as_ptr(), count) };
+    for row in rows {
+        if port_from_dword(row.dwLocalPort) == local_port {
+            return Some(row.dwOwningPid);
+        }
     }
     None
 }

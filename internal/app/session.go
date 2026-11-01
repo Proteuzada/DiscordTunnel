@@ -50,6 +50,7 @@ type Session struct {
 
 	routeBefore route.Snapshot
 	gatewayHost string
+	vpnGateway  string
 	logDir      string
 	settings    config.Settings
 	onUpdate    func(Status)
@@ -60,6 +61,9 @@ func NewSession(settings config.Settings, onUpdate func(Status)) *Session {
 }
 
 func (s *Session) notify(st Status) {
+	if st.Error != "" && s.logDir != "" {
+		_ = os.WriteFile(filepath.Join(s.logDir, "last-error.txt"), []byte(st.Error+"\n"), 0o600)
+	}
 	if s.onUpdate != nil {
 		s.onUpdate(st)
 	}
@@ -73,14 +77,10 @@ func (s *Session) Connect() {
 	}
 	s.mu.Unlock() // long connect must not hold the lock
 
-	s.notify(Status{State: StateConnecting})
-
-	logDir, err := config.LogDir()
-	if err != nil {
-		s.notify(Status{State: StateIdle, Error: err.Error()})
-		return
-	}
+	logDir, _ := config.LogDir()
 	s.logDir = logDir
+
+	s.notify(Status{State: StateConnecting})
 
 	if err := config.WriteRedirectorConfig(s.settings.Channels); err != nil {
 		s.notify(Status{State: StateIdle, Error: err.Error()})
@@ -100,15 +100,6 @@ func (s *Session) Connect() {
 		return
 	}
 	s.job = j
-
-	redCmd, err := redirect.Start()
-	if err != nil {
-		s.job.Close()
-		s.notify(Status{State: StateIdle, Error: err.Error()})
-		return
-	}
-	_ = s.job.Assign(redCmd.Process.Pid)
-	s.redirector = redCmd
 
 	runtimeDir, err := config.RuntimeDir()
 	if err != nil {
@@ -175,7 +166,11 @@ func (s *Session) Connect() {
 
 	if err := s.vpn.WaitConnected(90 * time.Second); err != nil {
 		s.disconnectLocked()
-		s.notify(Status{State: StateIdle, Error: err.Error()})
+		msg := err.Error()
+		if tail := readOpenVPNHint(s.logDir); tail != "" {
+			msg = tail
+		}
+		s.notify(Status{State: StateIdle, Error: msg})
 		return
 	}
 
@@ -192,13 +187,40 @@ func (s *Session) Connect() {
 		return
 	}
 
+	s.vpnGateway = vpn.PushedGateway(filepath.Join(logDir, "openvpn.log"))
+	ifIndex, err := egress.TunnelIfIndex()
+	if err != nil {
+		s.disconnectLocked()
+		s.notify(Status{State: StateIdle, Error: err.Error()})
+		return
+	}
+	if err := route.AddHighMetricDefault(ifIndex, s.vpnGateway); err != nil {
+		s.disconnectLocked()
+		s.notify(Status{State: StateIdle, Error: "rota do túnel: " + err.Error()})
+		return
+	}
+
+	redCmd, err := redirect.Start(filepath.Join(logDir, "redirector.log"))
+	if err != nil {
+		s.disconnectLocked()
+		s.notify(Status{State: StateIdle, Error: err.Error()})
+		return
+	}
+	_ = s.job.Assign(redCmd.Process.Pid)
+	s.redirector = redCmd
+
+	time.Sleep(2 * time.Second)
 	sysIP, _ := egress.PublicIP()
+	tunnelIP, _ := egress.TunnelPublicIP()
+	if tunnelIP == "" {
+		tunnelIP = "túnel sem IP de saída ainda"
+	}
 
 	s.notify(Status{
 		State:         StateConnected,
 		Gateway:       s.gatewayHost,
 		SystemIP:      sysIP,
-		DiscordIP:     sysIP + " (via ponte quando Discord enviar tráfego)",
+		DiscordIP:     tunnelIP,
 		GatewayBefore: s.routeBefore.DefaultGateway,
 		GatewayAfter:  after.DefaultGateway,
 		LogDir:        logDir,
@@ -208,7 +230,9 @@ func (s *Session) Connect() {
 func (s *Session) Disconnect() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	gw := s.vpnGateway
 	s.disconnectLocked()
+	route.DeleteHighMetricDefault(gw)
 	route.CleanupSplitRoutes()
 	s.notify(Status{State: StateIdle, LogDir: s.logDir})
 }

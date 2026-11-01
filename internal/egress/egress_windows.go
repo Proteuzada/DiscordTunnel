@@ -3,6 +3,7 @@
 package egress
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,38 @@ import (
 )
 
 const checkURL = "https://api.ipify.org?format=json"
+
+func TunnelIfIndex() (uint32, error) {
+	ifs, err := net.Interfaces()
+	if err != nil {
+		return 0, err
+	}
+	for _, iface := range ifs {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip := ipnet.IP.To4()
+			if ip != nil && ip[0] == 10 && (ip[1] == 41 || ip[1] == 42) {
+				return uint32(iface.Index), nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("adaptador da Riseup ainda sem IPv4")
+}
+
+func TunnelPublicIP() (string, error) {
+	idx, err := TunnelIfIndex()
+	if err != nil {
+		return "", err
+	}
+	return PublicIPViaInterface(idx)
+}
 
 func PublicIP() (string, error) {
 	client := &http.Client{Timeout: 12 * time.Second}
@@ -25,7 +58,7 @@ func PublicIP() (string, error) {
 }
 
 func PublicIPViaInterface(ifIndex uint32) (string, error) {
-	d := net.Dialer{
+	d := &net.Dialer{
 		Timeout: 12 * time.Second,
 		Control: func(network, address string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
@@ -33,22 +66,20 @@ func PublicIPViaInterface(ifIndex uint32) (string, error) {
 			})
 		},
 	}
-	conn, err := d.Dial("tcp4", "api.ipify.org:443")
+	client := &http.Client{
+		Timeout: 12 * time.Second,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return d.DialContext(ctx, "tcp4", addr)
+			},
+		},
+	}
+	resp, err := client.Get(checkURL)
 	if err != nil {
 		return "", err
 	}
-	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(12 * time.Second))
-	req, _ := http.NewRequest(http.MethodGet, checkURL, nil)
-	if err := req.Write(conn); err != nil {
-		return "", err
-	}
-	br := io.LimitReader(conn, 4096)
-	// crude HTTP read
-	buf := make([]byte, 4096)
-	n, _ := br.Read(buf)
-	body := extractHTTPBody(buf[:n])
-	return parseIPFromJSON(body)
+	defer resp.Body.Close()
+	return parseIP(resp.Body)
 }
 
 func bindToInterface(fd uintptr, ifIndex uint32) error {

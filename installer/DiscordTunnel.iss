@@ -1,12 +1,12 @@
 ; Instalador DiscordTunnel — inclui OpenVPN se necessário (uso gratuito RiseupVPN)
 
 #define MyAppName      "DiscordTunnel"
-#define MyAppVersion   "1.0.0"
+#define MyAppVersion   "1.0.1"
 #define MyAppPublisher "DiscordTunnel"
 #define MyAppExeName   "DiscordTunnel.exe"
 #define MyAppId        "{{B8E4C1A2-9F3D-4A2E-B1C0-DISCORDTUNNEL}"
 
-#define DistDir        "..\dist"
+#define DistDir        "..\dist\pack"
 #define OpenVpnVersion "2.7.4"
 #define OpenVpnMsi     "OpenVPN-" + OpenVpnVersion + "-I001-amd64.msi"
 

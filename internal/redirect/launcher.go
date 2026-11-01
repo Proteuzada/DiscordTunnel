@@ -33,16 +33,21 @@ func FindBinary() (string, error) {
 	return "", fmt.Errorf("redirector.exe não encontrado — execute build.ps1")
 }
 
-func Start() (*exec.Cmd, error) {
+func Start(logPath string) (*exec.Cmd, error) {
 	path, err := FindBinary()
+	if err != nil {
+		return nil, err
+	}
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return nil, err
 	}
 	cmd := exec.Command(path, "observe")
 	cmd.Dir = filepath.Dir(path)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
+		logFile.Close()
 		return nil, err
 	}
 	return cmd, nil

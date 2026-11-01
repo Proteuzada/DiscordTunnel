@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
+	"unsafe"
 )
 
 type Session struct {
@@ -46,18 +48,22 @@ func WriteConfig(dir, caPath, certPath string, serverLines []string) (string, er
 	b.WriteString("persist-tun\n")
 	b.WriteString("tls-client\n")
 	b.WriteString("remote-cert-tls server\n")
-	b.WriteString("tls-version-min 1.0\n")
-	b.WriteString("proto udp\n")
 	b.WriteString("script-security 1\n")
-	b.WriteString(fmt.Sprintf("ca %s\n", caPath))
-	b.WriteString(fmt.Sprintf("cert %s\n", certPath))
-	b.WriteString(fmt.Sprintf("key %s\n", certPath))
+	b.WriteString("connect-retry-max 2\n")
+	b.WriteString(fmt.Sprintf("ca %s\n", ovpnPath(caPath)))
+	b.WriteString(fmt.Sprintf("cert %s\n", ovpnPath(certPath)))
+	b.WriteString(fmt.Sprintf("key %s\n", ovpnPath(certPath)))
+	hasRemote := false
 	for _, line := range serverLines {
 		if strings.HasPrefix(line, "remote ") {
-			b.WriteString(line + "\n")
-		} else {
-			b.WriteString(line + "\n")
+			hasRemote = true
 		}
+		b.WriteString(line + "\n")
+	}
+	if hasRemote {
+		b.WriteString("remote-random\n")
+		b.WriteString("connect-timeout 20\n")
+		b.WriteString("proto udp\n")
 	}
 	path := filepath.Join(dir, "session.ovpn")
 	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
@@ -85,18 +91,19 @@ func (s *Session) Start(openvpnExe, configPath, logPath string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	_ = os.Remove(logPath)
 	args := []string{
 		"--config", configPath,
 		"--management", "127.0.0.1", fmt.Sprintf("%d", port),
-		"--management-query-passwords", "once",
-		"--windows-driver", "wintun",
+		// TAP evita conflito quando Wintun já está em uso (ex.: Cloudflare WARP).
+		"--windows-driver", "tap-windows6",
 		"--route-nopull",
 		"--pull-filter", "ignore", "redirect-gateway",
 		"--pull-filter", "ignore", "dhcp-option DNS",
 		"--pull-filter", "ignore", "block-outside-dns",
 		"--pull-filter", "ignore", "route-ipv6",
 		"--pull-filter", "ignore", "ifconfig-ipv6",
-		"--log", logPath,
+		"--log", ovpnPath(logPath),
 		"--verb", "3",
 	}
 	cmd := exec.Command(openvpnExe, args...)
@@ -114,36 +121,150 @@ func (s *Session) Start(openvpnExe, configPath, logPath string) (int, error) {
 
 func (s *Session) WaitConnected(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	addr := fmt.Sprintf("127.0.0.1:%d", s.mgmtPort)
+
+	_ = addr
 	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", s.mgmtPort), time.Second)
-		if err != nil {
-			time.Sleep(300 * time.Millisecond)
-			continue
+		if !processAlive(s.cmd) {
+			if msg := tailLog(s.logPath); msg != "" {
+				return fmt.Errorf("openvpn encerrou: %s", msg)
+			}
+			return fmt.Errorf("openvpn encerrou antes de conectar")
 		}
-		_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
-		r := bufio.NewReader(conn)
-		for {
-			line, err := r.ReadString('\n')
-			if err != nil {
-				break
-			}
-			if strings.HasPrefix(line, ">HOLD:") {
-				_, _ = fmt.Fprint(conn, "hold release\n")
-				continue
-			}
-			if strings.Contains(line, "CONNECTED,SUCCESS") {
-				conn.Close()
-				return nil
-			}
-			if strings.Contains(line, "FATAL") || strings.Contains(line, "AUTH_FAILED") {
-				conn.Close()
-				return fmt.Errorf("openvpn: %s", strings.TrimSpace(line))
-			}
+		logText := readLogTail(s.logPath)
+		if strings.Contains(logText, "Initialization Sequence Completed") {
+			return nil
 		}
-		conn.Close()
-		time.Sleep(400 * time.Millisecond)
+		if strings.Contains(logText, "AUTH_FAILED") || strings.Contains(logText, "Exiting due to fatal error") {
+			if msg := tailLog(s.logPath); msg != "" {
+				return fmt.Errorf("%s", msg)
+			}
+			return fmt.Errorf("openvpn falhou ao conectar")
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	if msg := tailLog(s.logPath); msg != "" {
+		return fmt.Errorf("openvpn: timeout (%s)", msg)
 	}
 	return fmt.Errorf("openvpn: timeout aguardando CONNECTED")
+}
+
+func waitMgmtConnected(conn net.Conn, deadline time.Time) error {
+	// OpenVPN 2.6 with --management-hold does not send packets until this.
+	// Sending it up front matches the official client's management session.
+	if _, err := fmt.Fprint(conn, "hold release\nstate on\n"); err != nil {
+		return err
+	}
+	r := bufio.NewReader(conn)
+	for time.Now().Before(deadline) {
+		_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+		line, err := r.ReadString('\n')
+		if err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				continue
+			}
+			return err
+		}
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "CONNECTED,SUCCESS") {
+			return nil
+		}
+		if strings.Contains(line, "FATAL") || strings.Contains(line, "AUTH_FAILED") {
+			return fmt.Errorf("%s", line)
+		}
+	}
+	return fmt.Errorf("prazo esgotado")
+}
+
+func processAlive(cmd *exec.Cmd) bool {
+	if cmd == nil || cmd.Process == nil {
+		return false
+	}
+	const queryLimited = 0x1000
+	const stillActive = 259
+	h, err := syscall.OpenProcess(queryLimited, false, uint32(cmd.Process.Pid))
+	if err != nil {
+		return false
+	}
+	defer syscall.CloseHandle(h)
+	var code uint32
+	r, _, _ := syscall.NewLazyDLL("kernel32.dll").NewProc("GetExitCodeProcess").Call(
+		uintptr(h),
+		uintptr(unsafe.Pointer(&code)),
+	)
+	return r != 0 && code == stillActive
+}
+
+func PushedGateway(logPath string) string {
+	text := readLogTail(logPath)
+	const key = "route-gateway "
+	last := ""
+	for _, line := range strings.Split(text, "\n") {
+		if i := strings.Index(line, key); i >= 0 {
+			rest := strings.TrimSpace(line[i+len(key):])
+			fields := strings.FieldsFunc(rest, func(r rune) bool { return r == ',' || r == ' ' })
+			if len(fields) > 0 {
+				last = fields[0]
+			}
+		}
+	}
+	return last
+}
+
+func ovpnPath(p string) string {
+	return filepath.ToSlash(filepath.Clean(p))
+}
+
+func readLogTail(path string) string {
+	if path == "" {
+		return ""
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	s := string(b)
+	if len(s) > 16000 {
+		s = s[len(s)-16000:]
+	}
+	return s
+}
+
+func tailLog(path string) string {
+	s := readLogTail(path)
+	if s == "" {
+		return ""
+	}
+	if len(s) > 800 {
+		s = s[len(s)-800:]
+	}
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.Contains(line, "wintun adapters") && strings.Contains(line, "in use") {
+			return "Adaptador Wintun ocupado (feche Cloudflare WARP ou outra VPN) e tente de novo"
+		}
+		if strings.Contains(strings.ToUpper(line), "ERROR") ||
+			strings.Contains(strings.ToUpper(line), "FATAL") ||
+			strings.Contains(line, "Exiting") {
+			return line
+		}
+	}
+	if strings.Contains(s, "Initialization Sequence Completed") {
+		return ""
+	}
+	return strings.TrimSpace(lastLine(s))
+}
+
+func lastLine(s string) string {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == '\n' {
+			return strings.TrimSpace(s[i+1:])
+		}
+	}
+	return strings.TrimSpace(s)
 }
 
 func (s *Session) Stop() {

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -35,23 +36,39 @@ func Validate(before Snapshot, after Snapshot) error {
 }
 
 func CleanupSplitRoutes() {
-	out, err := exec.Command("route", "print", "-4").Output()
-	if err != nil {
+	// Only the /1 prefixes OpenVPN installs for a full tunnel.
+	// Never delete 0.0.0.0/0: that is the user's normal default route.
+	_ = exec.Command("route", "delete", "0.0.0.0", "mask", "128.0.0.0").Run()
+	_ = exec.Command("route", "delete", "128.0.0.0", "mask", "128.0.0.0").Run()
+}
+
+func AddHighMetricDefault(ifIndex uint32, gateway string) error {
+	if ifIndex == 0 || gateway == "" {
+		return fmt.Errorf("rota do túnel incompleta")
+	}
+	out, err := exec.Command(
+		"route", "ADD", "0.0.0.0", "MASK", "0.0.0.0", gateway,
+		"METRIC", "9999", "IF", strconv.FormatUint(uint64(ifIndex), 10),
+	).CombinedOutput()
+	msg := string(out)
+	if err != nil && !strings.Contains(strings.ToLower(msg), "already exists") && !strings.Contains(msg, "já existe") {
+		return fmt.Errorf("%s", strings.TrimSpace(msg))
+	}
+	return nil
+}
+
+func DeleteHighMetricDefault(gateway string) {
+	if gateway == "" {
 		return
 	}
-	snap, _ := parseRoutePrint(out)
-	if !snap.HasSplitHijack {
-		return
-	}
-	for _, dest := range []string{"0.0.0.0", "128.0.0.0"} {
-		_ = exec.Command("route", "delete", dest).Run()
-	}
+	_ = exec.Command("route", "DELETE", "0.0.0.0", "MASK", "0.0.0.0", gateway).Run()
 }
 
 func parseRoutePrint(out []byte) (Snapshot, error) {
 	var snap Snapshot
 	sc := bufio.NewScanner(bytes.NewReader(out))
 	inActive := false
+	bestMetric := int(^uint(0) >> 1)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if strings.HasPrefix(line, "Active Routes:") {
@@ -69,8 +86,12 @@ func parseRoutePrint(out []byte) (Snapshot, error) {
 			continue
 		}
 		dest, mask, gateway := fields[0], fields[1], fields[2]
-		if dest == "0.0.0.0" && mask == "0.0.0.0" && gateway != "0.0.0.0" {
-			snap.DefaultGateway = gateway
+		if dest == "0.0.0.0" && mask == "0.0.0.0" && gateway != "0.0.0.0" && gateway != "On-link" {
+			metric, err := strconv.Atoi(fields[4])
+			if err == nil && metric < bestMetric {
+				bestMetric = metric
+				snap.DefaultGateway = gateway
+			}
 		}
 		if (dest == "0.0.0.0" && mask == "128.0.0.0") ||
 			(dest == "128.0.0.0" && mask == "128.0.0.0") {

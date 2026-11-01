@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Gera dist\ + installer\Output\DiscordTunnel-Setup-1.0.0.exe
+# Gera dist\ + installer\Output\DiscordTunnel-Setup-<versão>.exe
 param([switch]$SkipAppBuild)
 
 $ErrorActionPreference = "Stop"
@@ -34,6 +34,18 @@ $iscc = @(
 
 if (-not $iscc) {
     throw "Inno Setup 6 não encontrado. Instale: winget install JRSoftware.InnoSetup"
+}
+
+$pack = Join-Path $root "dist\pack"
+if (Test-Path $pack) { Remove-Item $pack -Recurse -Force }
+New-Item -ItemType Directory -Path $pack -Force | Out-Null
+Get-ChildItem (Join-Path $root "dist") -File | Where-Object { $_.Name -ne "redirector.exe" } |
+    Copy-Item -Destination $pack -Force
+Copy-Item (Join-Path $root "target\release\redirector.exe") $pack -Force
+foreach ($f in @("WinDivert.dll", "WinDivert64.sys")) {
+    $src = Join-Path $root "target\release\$f"
+    if (-not (Test-Path $src)) { $src = Join-Path $root "dist\$f" }
+    if (Test-Path $src) { Copy-Item $src $pack -Force }
 }
 
 Write-Host "[installer] Compilando com Inno Setup..." -ForegroundColor Cyan
