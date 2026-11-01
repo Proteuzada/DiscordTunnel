@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/mello/tunneling/internal/winexec"
 )
 
 func FindBinary() (string, error) {
@@ -43,6 +45,7 @@ func Start(logPath string) (*exec.Cmd, error) {
 		return nil, err
 	}
 	cmd := exec.Command(path, "observe")
+	winexec.Prepare(cmd)
 	cmd.Dir = filepath.Dir(path)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile

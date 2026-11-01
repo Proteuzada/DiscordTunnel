@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/mello/tunneling/internal/winexec"
 )
 
 type Session struct {
@@ -107,8 +109,7 @@ func (s *Session) Start(openvpnExe, configPath, logPath string) (int, error) {
 		"--verb", "3",
 	}
 	cmd := exec.Command(openvpnExe, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	winexec.Prepare(cmd)
 	if err := cmd.Start(); err != nil {
 		return 0, err
 	}

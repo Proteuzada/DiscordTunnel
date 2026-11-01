@@ -2,8 +2,8 @@
 
 ## Um clique (recomendado)
 
-1. Baixe **`DiscordTunnel-Setup-1.0.1.exe`**:
-   - Caminho após compilar: `installer\Output\DiscordTunnel-Setup-1.0.1.exe`
+1. Baixe **`DiscordTunnel-Setup-1.0.2.exe`**:
+   - Caminho após compilar: `installer\Output\DiscordTunnel-Setup-1.0.2.exe`
    - Ou a release publicada no GitHub (quando disponível).
 2. Clique com o botão direito → **Executar como administrador** (ou aceite o UAC quando o instalador pedir).
 3. Siga o assistente (português ou inglês).
@@ -45,4 +45,4 @@ cd C:\Users\mello\Tunneling
 .\installer\build-installer.ps1
 ```
 
-Saída: `installer\Output\DiscordTunnel-Setup-1.0.1.exe` (~20 MB, inclui OpenVPN embutido).
+Saída: `installer\Output\DiscordTunnel-Setup-1.0.2.exe` (~20 MB, inclui OpenVPN embutido).

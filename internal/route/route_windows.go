@@ -6,9 +6,10 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/mello/tunneling/internal/winexec"
 )
 
 type Snapshot struct {
@@ -17,7 +18,7 @@ type Snapshot struct {
 }
 
 func Capture() (Snapshot, error) {
-	out, err := exec.Command("route", "print", "-4").Output()
+	out, err := winexec.Command("route", "print", "-4").Output()
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -38,15 +39,15 @@ func Validate(before Snapshot, after Snapshot) error {
 func CleanupSplitRoutes() {
 	// Only the /1 prefixes OpenVPN installs for a full tunnel.
 	// Never delete 0.0.0.0/0: that is the user's normal default route.
-	_ = exec.Command("route", "delete", "0.0.0.0", "mask", "128.0.0.0").Run()
-	_ = exec.Command("route", "delete", "128.0.0.0", "mask", "128.0.0.0").Run()
+	_ = winexec.Command("route", "delete", "0.0.0.0", "mask", "128.0.0.0").Run()
+	_ = winexec.Command("route", "delete", "128.0.0.0", "mask", "128.0.0.0").Run()
 }
 
 func AddHighMetricDefault(ifIndex uint32, gateway string) error {
 	if ifIndex == 0 || gateway == "" {
 		return fmt.Errorf("rota do túnel incompleta")
 	}
-	out, err := exec.Command(
+	out, err := winexec.Command(
 		"route", "ADD", "0.0.0.0", "MASK", "0.0.0.0", gateway,
 		"METRIC", "9999", "IF", strconv.FormatUint(uint64(ifIndex), 10),
 	).CombinedOutput()
@@ -61,7 +62,7 @@ func DeleteHighMetricDefault(gateway string) {
 	if gateway == "" {
 		return
 	}
-	_ = exec.Command("route", "DELETE", "0.0.0.0", "MASK", "0.0.0.0", gateway).Run()
+	_ = winexec.Command("route", "DELETE", "0.0.0.0", "MASK", "0.0.0.0", gateway).Run()
 }
 
 func parseRoutePrint(out []byte) (Snapshot, error) {

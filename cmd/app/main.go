@@ -3,16 +3,15 @@
 package main
 
 import (
-	"os"
-	"os/exec"
-
 	"fyne.io/fyne/v2"
 	fyneapp "fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/mello/tunneling/internal/app"
 	"github.com/mello/tunneling/internal/config"
+	"github.com/mello/tunneling/internal/winexec"
 	"golang.org/x/sys/windows"
 )
 
@@ -49,10 +48,15 @@ func main() {
 	}
 
 	uiCh := make(chan app.Status, 16)
+	var lastState app.State
 	go func() {
 		for st := range uiCh {
 			st := st
 			updateUI(st)
+			if st.State == app.StateConnected && lastState != app.StateConnected {
+				dialog.ShowInformation("DiscordTunnel", "Conectado com sucesso!\n\nFeche o Discord por completo e abra de novo para usar o túnel.", w)
+			}
+			lastState = st.State
 		}
 	}()
 	session = app.NewSession(settings, func(st app.Status) {
@@ -81,7 +85,7 @@ func main() {
 		if err != nil {
 			return
 		}
-		_ = exec.Command("explorer", dir).Start()
+		_ = winexec.Command("explorer", dir).Start()
 	})
 
 	w.SetContent(container.NewVBox(
@@ -118,12 +122,5 @@ func isAdmin() bool {
 }
 
 func relaunchElevated() {
-	exe, err := os.Executable()
-	if err != nil {
-		return
-	}
-	verb := "runas"
-	cwd, _ := os.Getwd()
-	_ = exec.Command("powershell", "-Command",
-		"Start-Process -FilePath '"+exe+"' -Verb "+verb+" -WorkingDirectory '"+cwd+"'").Run()
+	_ = winexec.RelaunchElevated()
 }

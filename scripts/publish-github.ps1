@@ -18,7 +18,7 @@ if ($LASTEXITCODE -ne 0) {
     gh auth login --hostname github.com --git-protocol https --web
 }
 
-$version = "1.0.1"
+$version = "1.0.2"
 $setup = "installer\Output\DiscordTunnel-Setup-$version.exe"
 if (-not (Test-Path $setup)) {
     Write-Host "Gerando instalador..." -ForegroundColor Cyan

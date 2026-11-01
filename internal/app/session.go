@@ -24,7 +24,7 @@ type State string
 const (
 	StateIdle       State = "desconectado"
 	StateConnecting State = "conectando"
-	StateConnected  State = "no ar"
+	StateConnected  State = "conectado com sucesso"
 	StateRouteError State = "erro de rota"
 	StateTunnelDown State = "túnel caiu"
 )
