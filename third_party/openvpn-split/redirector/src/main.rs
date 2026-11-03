@@ -14,6 +14,7 @@ mod stack;
 mod status_server;
 mod tunneled;
 mod vpn_state;
+mod wdopen;
 
 use std::sync::Arc;
 

@@ -106,90 +106,12 @@ func (c *Client) PickGateway(countryCodes []string) (Gateway, []string, error) {
 		return Gateway{}, nil, err
 	}
 
-	want := make(map[string]bool, len(countryCodes))
-	for _, cc := range countryCodes {
-		want[strings.ToUpper(strings.TrimSpace(cc))] = true
-	}
-
-	var candidates []Gateway
-	for _, gw := range cfg.Gateways {
-		loc, ok := cfg.Locations[gw.Location]
-		if !ok {
-			continue
-		}
-		if len(want) > 0 && !want[strings.ToUpper(loc.CountryCode)] {
-			continue
-		}
-		for _, tp := range gw.Capabilities.Transport {
-			if tp.Type != "openvpn" {
-				continue
-			}
-			ports := parseOpenVPNPorts(tp.Ports)
-			if len(ports) == 0 {
-				continue
-			}
-			city := loc.City
-			if city == "" {
-				city = loc.Name
-			}
-			if city == "" {
-				city = gw.Location
-			}
-			port := preferredOpenVPNPort(ports)
-			if port == 0 {
-				continue
-			}
-			candidates = append(candidates, Gateway{
-				Host:     gw.IPAddress,
-				Ports:    []int{port},
-				Location: city,
-				Country:  loc.CountryCode,
-			})
-		}
-	}
-	if len(candidates) == 0 && len(want) > 0 {
-		// Retry without country filter (same as accepting any Riseup gateway).
-		for _, gw := range cfg.Gateways {
-			loc, ok := cfg.Locations[gw.Location]
-			if !ok {
-				continue
-			}
-			for _, tp := range gw.Capabilities.Transport {
-				if tp.Type != "openvpn" {
-					continue
-				}
-				ports := parseOpenVPNPorts(tp.Ports)
-				if len(ports) == 0 {
-					continue
-				}
-				city := loc.City
-				if city == "" {
-					city = loc.Name
-				}
-				if city == "" {
-					city = gw.Location
-				}
-				port := preferredOpenVPNPort(ports)
-				if port == 0 {
-					continue
-				}
-				candidates = append(candidates, Gateway{
-					Host:     gw.IPAddress,
-					Ports:    []int{port},
-					Location: city,
-					Country:  loc.CountryCode,
-				})
-			}
-		}
-	}
+	_ = countryCodes
+	candidates := miamiGateways(cfg)
 	if len(candidates) == 0 {
-		return Gateway{}, nil, fmt.Errorf("riseup: nenhum gateway OpenVPN disponível")
+		return Gateway{}, nil, fmt.Errorf("riseup: nenhum gateway OpenVPN em Miami")
 	}
 	sort.Slice(candidates, func(i, j int) bool {
-		pi, pj := gatewayPriority(candidates[i].Country), gatewayPriority(candidates[j].Country)
-		if pi != pj {
-			return pi < pj
-		}
 		return candidates[i].Host < candidates[j].Host
 	})
 	gw := candidates[0]
@@ -208,15 +130,44 @@ func (c *Client) PickGateway(countryCodes []string) (Gateway, []string, error) {
 	return gw, lines, nil
 }
 
-func gatewayPriority(country string) int {
-	switch strings.ToUpper(country) {
-	case "BR", "FR", "NL", "DE", "ES", "IT", "PT":
-		return 0
-	case "US", "CA":
-		return 2
-	default:
-		return 1
+func miamiGateways(cfg eipConfig) []Gateway {
+	var candidates []Gateway
+	for _, gw := range cfg.Gateways {
+		loc, ok := cfg.Locations[gw.Location]
+		if !ok {
+			continue
+		}
+		city := loc.City
+		if city == "" {
+			city = loc.Name
+		}
+		if city == "" {
+			city = gw.Location
+		}
+		if !strings.Contains(strings.ToLower(city), "miami") {
+			continue
+		}
+		for _, tp := range gw.Capabilities.Transport {
+			if tp.Type != "openvpn" {
+				continue
+			}
+			ports := parseOpenVPNPorts(tp.Ports)
+			if len(ports) == 0 {
+				continue
+			}
+			port := preferredOpenVPNPort(ports)
+			if port == 0 {
+				continue
+			}
+			candidates = append(candidates, Gateway{
+				Host:     gw.IPAddress,
+				Ports:    []int{port},
+				Location: city,
+				Country:  loc.CountryCode,
+			})
+		}
 	}
+	return candidates
 }
 
 func buildOpenVPNBase(opts map[string]json.RawMessage) []string {

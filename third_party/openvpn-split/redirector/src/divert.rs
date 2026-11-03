@@ -40,14 +40,8 @@ pub fn run(
     tunneled_paths: TunneledPaths,
 ) -> Result<()> {
     let capture_filter = "outbound and ip and (tcp or udp) and !loopback";
-    let capture = WinDivert::network(capture_filter, 1040, WinDivertFlags::new())
-        .context("WinDivert::network capture handle failed (need admin)")?;
-    let inject = WinDivert::network(
-        "false",
-        1039,
-        WinDivertFlags::new().set_send_only(),
-    )
-    .context("WinDivert::network inject handle failed")?;
+    let capture = crate::wdopen::network(capture_filter, 1040, WinDivertFlags::new())?;
+    let inject = crate::wdopen::network("false", 1039, WinDivertFlags::new().set_send_only())?;
 
     tracing::info!(
         "divert: capture+inject open, filter={}, smoltcp mode",

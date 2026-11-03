@@ -4,7 +4,7 @@ Programa para **Windows** que usa a rede [RiseupVPN](https://riseup.net/vpn) (cl
 
 ## Para quem só quer usar (sem programar)
 
-1. Baixe **`DiscordTunnel-Setup-1.0.4.exe`** (instalador) na página de [Releases](../../releases) ou em `installer\Output\` depois de compilar.
+1. Baixe **`DiscordTunnel-Setup-1.0.5.exe`** (instalador) na página de [Releases](../../releases) ou em `installer\Output\` depois de compilar.
 2. Execute o instalador **como administrador**.
 3. Se o PC não tiver OpenVPN, o instalador instala o **OpenVPN Community** com driver **Wintun** (silencioso).
 4. Abra **DiscordTunnel** no menu Iniciar e clique em **Conectar**.
@@ -32,7 +32,7 @@ cd C:\Users\mello\Tunneling
 .\installer\build-installer.ps1
 ```
 
-Saída: `installer\Output\DiscordTunnel-Setup-1.0.4.exe` (app + redirector + WinDivert; OpenVPN embutido no instalador).
+Saída: `installer\Output\DiscordTunnel-Setup-1.0.5.exe` (app + redirector + WinDivert; OpenVPN embutido no instalador).
 
 ## Estrutura
 

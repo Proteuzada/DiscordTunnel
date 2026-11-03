@@ -63,8 +63,7 @@ func WriteConfig(dir, caPath, certPath string, serverLines []string) (string, er
 		b.WriteString(line + "\n")
 	}
 	if hasRemote {
-		b.WriteString("remote-random\n")
-		b.WriteString("connect-timeout 20\n")
+		b.WriteString("connect-timeout 12\n")
 		b.WriteString("proto udp\n")
 	}
 	path := filepath.Join(dir, "session.ovpn")

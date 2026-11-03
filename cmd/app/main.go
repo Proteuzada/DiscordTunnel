@@ -93,7 +93,7 @@ func main() {
 	})
 
 	w.SetContent(container.NewVBox(
-		widget.NewLabel("Só o Discord desktop sai pela Riseup. Depois de conectar, feche o Discord por completo e abra de novo (F5 reaproveita a conexão antiga)."),
+		widget.NewLabel("Só o Discord sai pela Riseup, pelo gateway de Miami. Depois de conectar, feche o Discord por completo e abra de novo."),
 		statusLabel,
 		gatewayLabel,
 		sysIPLabel,

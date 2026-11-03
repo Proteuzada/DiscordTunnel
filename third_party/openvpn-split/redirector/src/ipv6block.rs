@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
-use windivert::prelude::*;
+use anyhow::Result;
+use windivert::prelude::WinDivertFlags;
 
 use crate::pidlookup;
 use crate::policy::{self, PolicyState};
@@ -14,8 +14,7 @@ use crate::tunneled::{self, TunneledPaths};
 
 pub fn run(policy_state: PolicyState, resolver: Arc<Resolver>, tunneled_paths: TunneledPaths) -> Result<()> {
     let filter = "outbound and ipv6 and (tcp or udp) and !loopback";
-    let capture = WinDivert::network(filter, 1041, WinDivertFlags::new())
-        .context("WinDivert IPv6 handle failed")?;
+    let capture = crate::wdopen::network(filter, 1041, WinDivertFlags::new())?;
     tracing::info!("ipv6 block open for tunneled apps");
 
     let mut buffer = vec![0u8; 65535];
