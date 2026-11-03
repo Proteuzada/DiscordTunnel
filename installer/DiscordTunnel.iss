@@ -1,7 +1,7 @@
 ; Instalador DiscordTunnel — inclui OpenVPN se necessário (uso gratuito RiseupVPN)
 
 #define MyAppName      "DiscordTunnel"
-#define MyAppVersion   "1.0.3"
+#define MyAppVersion   "1.0.4"
 #define MyAppPublisher "DiscordTunnel"
 #define MyAppExeName   "DiscordTunnel.exe"
 #define MyAppId        "{{B8E4C1A2-9F3D-4A2E-B1C0-DISCORDTUNNEL}"
@@ -16,7 +16,8 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppSupportURL=https://riseup.net/vpn
-AppUpdatesURL=https://riseup.net/vpn/donate
+AppUpdatesURL=https://github.com/Proteuzada/DiscordTunnel/releases
+AppMutex=DiscordTunnel
 DefaultDirName={autopf}\DiscordTunnel
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=no
@@ -55,6 +56,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 [Run]
 Filename: "msiexec.exe"; Parameters: "/i ""{tmp}\{#OpenVpnMsi}"" /quiet /norestart ADDLOCAL=OpenVPN,Drivers,Drivers.Wintun"; StatusMsg: "Instalando OpenVPN (Wintun)..."; Flags: waituntilterminated; Check: not OpenVpnInstalled
 Filename: "{app}\{#MyAppExeName}"; Description: "Abrir {#MyAppName}"; Flags: shellexec postinstall skipifsilent nowait
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait skipifnotsilent
 
 [Code]
 function OpenVpnInstalled: Boolean;

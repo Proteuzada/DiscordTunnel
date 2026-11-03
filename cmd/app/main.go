@@ -3,6 +3,8 @@
 package main
 
 import (
+	"os"
+
 	"fyne.io/fyne/v2"
 	fyneapp "fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/mello/tunneling/internal/app"
 	"github.com/mello/tunneling/internal/config"
+	"github.com/mello/tunneling/internal/update"
 	"github.com/mello/tunneling/internal/winexec"
 	"golang.org/x/sys/windows"
 )
@@ -20,6 +23,7 @@ func main() {
 		relaunchElevated()
 		return
 	}
+	holdSingleInstance()
 
 	settings := config.LoadSettings()
 	a := fyneapp.NewWithID("com.mello.discord-tunnel")
@@ -109,6 +113,19 @@ func main() {
 	})
 
 	w.Show()
+	go func() {
+		rel, err := update.NewerRelease()
+		if err != nil || rel == nil {
+			return
+		}
+		statusLabel.SetText("Atualizando para " + rel.Version + "…")
+		if err := update.Install(rel); err != nil {
+			errLabel.SetText("Atualização: " + err.Error())
+			return
+		}
+		session.Disconnect()
+		os.Exit(0)
+	}()
 	a.Run()
 }
 
@@ -123,4 +140,13 @@ func isAdmin() bool {
 
 func relaunchElevated() {
 	_ = winexec.RelaunchElevated()
+}
+
+func holdSingleInstance() {
+	name, err := windows.UTF16PtrFromString("DiscordTunnel")
+	if err != nil {
+		return
+	}
+	// Kept open for the process lifetime. The installer waits on this mutex.
+	_, _ = windows.CreateMutex(nil, false, name)
 }
