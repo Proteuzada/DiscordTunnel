@@ -304,6 +304,15 @@ fn handle_capture(
         return;
     }
 
+    // LAN, link-local and multicast stay on the physical NIC. Discord's own
+    // resolver talks to the home router (192.168.x.1:53); bridging that
+    // through Miami never gets an answer and the splash retries forever.
+    if !is_public_unicast_v4(dst_ip) {
+        let _ = capture.send(&packet);
+        stats.passed.fetch_add(1, Ordering::Relaxed);
+        return;
+    }
+
     if is_tcp {
         let key = TcpKey { src_ip, src_port };
         if !tcp_flows.contains_key(&key) {
@@ -379,6 +388,26 @@ fn handle_capture(
         stats.captured.fetch_add(1, Ordering::Relaxed);
         // packet consumed - do NOT reinject
     }
+}
+
+fn is_public_unicast_v4(ip: Ipv4Addr) -> bool {
+    let o = ip.octets();
+    if o[0] == 0 || o[0] == 10 || o[0] == 127 || o[0] >= 224 {
+        return false;
+    }
+    if o[0] == 169 && o[1] == 254 {
+        return false;
+    }
+    if o[0] == 172 && (o[1] & 0xf0) == 16 {
+        return false;
+    }
+    if o[0] == 192 && o[1] == 168 {
+        return false;
+    }
+    if o[0] == 100 && (o[1] & 0xc0) == 64 {
+        return false;
+    }
+    true
 }
 
 fn drain_tx(device: &mut VirtualDevice, inject: &WinDivert<NetworkLayer>, stats: &Stats) {
